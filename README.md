@@ -67,6 +67,7 @@ real game, record, then package.
 | `showcase-video` | Record the window with only the game's audio, pick moments, cut a styled video from an EDL |
 | `mashup-mods` | Game-inside-a-game: content ports, passthrough mods, decomps as libraries, reimplementations |
 | `publish-mod` | Lint, package per platform, credits, the post |
+| `bltps-gear-prompt` | "[Gear Type] based on [Thing] from [Source]" → the filled Borderlands: The Pre-Sequel gear-request template |
 
 **The `um` CLI** (`bin/um`, Python). Every command has `--help` with examples.
 

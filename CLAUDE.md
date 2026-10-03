@@ -5,6 +5,10 @@ here, they almost always want to **mod a game**. Start with the `mod-any-game` s
 (`skills/mod-any-game/SKILL.md`) and follow its loop: intake → recon → route → lab → source of truth →
 vertical slice → assets → verify in game → showcase → publish.
 
+Exception: a message shaped like "[Gear Type] based on [Weapon or Object/Thing] from [Source Material]"
+(e.g. "Laser Rifle based on The Binding of Isaac's Brimstone") is a request for the user's Borderlands: The
+Pre-Sequel gear prompt. Use the `bltps-gear-prompt` skill and only write out the filled template.
+
 ## Tools
 - `bin/um` is the CLI. A SessionStart hook in `.claude/settings.json` puts it on PATH, so `um ...` works.
   Every group has `--help`:
