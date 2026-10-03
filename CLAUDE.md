@@ -15,6 +15,7 @@ vertical slice → assets → verify in game → showcase → publish.
   - `video`: contact sheets, EDL-based showcase edits, muxing
   - `backup`: snapshot / restore saves
   - `publish`: pre-release lint
+  - `brief`: "<Gear> based on <Thing> from <Source>" → full gear brief (see the `gear-brief` skill)
 - The fal MCP server is configured in `.mcp.json` (needs `FAL_KEY`).
 - Skills: `skills/*/SKILL.md`. Engine playbooks: `skills/mod-any-game/references/engines/`.
 - Worked examples: `examples/terraria-tmodloader`, `examples/aoe2-de-civ`.

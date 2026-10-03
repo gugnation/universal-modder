@@ -13,7 +13,7 @@ from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from um import fal, publish, scan, sprite, video  # noqa: E402
+from um import brief, fal, publish, scan, sprite, video  # noqa: E402
 
 
 # --------------------------------------------------------------------------- scan
@@ -173,3 +173,21 @@ def test_compile_small_edl(tmp_path):
     video.compile_edl(tmp_path / "edl.json", str(tmp_path / "out.mp4"))
     info = video.probe(tmp_path / "out.mp4")
     assert abs(info["duration"] - (2 + 2 + 1.5)) < 0.15 and info["audio"]
+
+
+# --------------------------------------------------------------------------- brief
+
+@pytest.mark.parametrize("phrase", [
+    "Laser Rifle based on Brimstone from The Binding of Isaac",
+    "a Laser Rifle based on The Binding of Isaac’s Brimstone.",
+    "Laser Rifle based on The Binding of Isaac's Brimstone",
+])
+def test_brief_parse(phrase):
+    assert brief.parse(phrase) == dict(gear="Laser Rifle", thing="Brimstone", source="The Binding of Isaac")
+
+
+def test_brief_render():
+    text = brief.render("Shield", "the Aegis", "Smite")
+    assert text.startswith("# Shield based on the Aegis from Smite")
+    assert text.count("\n* ") == 7 and 'not called "Smite"' in text
+    assert "Borderlands: The Pre-Sequel" in text and "teleporter-boss-only" in text

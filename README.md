@@ -67,6 +67,7 @@ real game, record, then package.
 | `showcase-video` | Record the window with only the game's audio, pick moments, cut a styled video from an EDL |
 | `mashup-mods` | Game-inside-a-game: content ports, passthrough mods, decomps as libraries, reimplementations |
 | `publish-mod` | Lint, package per platform, credits, the post |
+| `gear-brief` | "<Gear> based on <Thing> from <Source>" → the full Borderlands gear brief (parody name, behaviour, extra bullets) |
 
 **The `um` CLI** (`bin/um`, Python). Every command has `--help` with examples.
 
@@ -80,6 +81,7 @@ real game, record, then package.
 | `um video` | `contact` sheets, `compile` (EDL → titled, beat-cut video with music), `mux`, `beats`, `first-frame` |
 | `um backup` | Snapshot, diff and restore save folders |
 | `um publish check` | Blocks shipping game files, decompiled code and leaked keys |
+| `um brief` | Expands "<Gear> based on <Thing> from <Source>" into a full gear brief (default game: Borderlands: The Pre-Sequel) |
 
 Also bundled: the **fal MCP server** (`.mcp.json`), a SessionStart hook that puts `um` on PATH, and two
 no-build Windows tools in `tools/win/`: WinDrive input and ProcLoopback game-only audio, both PowerShell with

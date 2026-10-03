@@ -9,6 +9,7 @@ Subcommands (see `um --help`):
   win       Windows (and WSL): screenshots, recording with game-only audio, input, processes
   backup    snapshot and restore save folders before you touch them
   publish   lint a mod folder before sharing: game files, decompiled code, secrets, credits
+  brief     expand '<Gear> based on <Thing> from <Source>' into a full gear brief (Borderlands: TPS by default)
 """
 
 __version__ = "0.1.0"
