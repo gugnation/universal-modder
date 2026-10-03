@@ -183,6 +183,10 @@ func main() {
 		walk.MsgBox(nil, "Gear Prompt Forge", err.Error(), walk.MsgBoxIconError)
 		return
 	}
+	// Icon group 2 is embedded by build.sh (rsrc: 1 = manifest, 2 = icon).
+	if ic, err := walk.NewIconFromResourceId(2); err == nil {
+		mw.SetIcon(ic)
+	}
 	for _, b := range []*lootButton{autoBtn, copyBtn, clearBtn} {
 		b.cw.SetCursor(walk.CursorHand())
 	}
