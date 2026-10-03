@@ -41,128 +41,139 @@ func buildPrompt(g, t, s, how, beh, extras string) string {
 }
 
 func main() {
+	displayFamily = loadFonts()
+
 	var mw *walk.MainWindow
 	var gear, thing, source *walk.LineEdit
 	var how, beh, extras, out *walk.TextEdit
 	var status *walk.Label
 	var keyEdit *walk.LineEdit
-	var autoBtn *walk.PushButton
+	autoBtn := &lootButton{text: "AUTO-FILL WITH CLAUDE", col: colYellow}
+	copyBtn := &lootButton{text: "COPY FOR WORD", col: colOrange}
+	clearBtn := &lootButton{text: "CLEAR", col: colMuted}
 
+	setStatus := func(t string, col walk.Color) {
+		if status != nil {
+			status.SetTextColor(col)
+			status.SetText(t)
+		}
+	}
 	update := func() {
 		if out == nil || gear == nil || thing == nil || source == nil || how == nil || beh == nil || extras == nil {
 			return
 		}
 		out.SetText(buildPrompt(gear.Text(), thing.Text(), source.Text(), how.Text(), beh.Text(), extras.Text()))
-		if status != nil {
-			status.SetText("")
-		}
+		setStatus("", colText)
 	}
 
-	big := Font{Family: "Segoe UI", PointSize: 11}
-	fixed := Font{Family: "Segoe UI", PointSize: 12, Bold: true}
+	autoBtn.onClick = func() {
+		g, t, s := strings.TrimSpace(gear.Text()), strings.TrimSpace(thing.Text()), strings.TrimSpace(source.Text())
+		key := strings.TrimSpace(keyEdit.Text())
+		if g == "" || t == "" || s == "" {
+			setStatus("Fill in all three boxes first.", colOrange)
+			return
+		}
+		if key == "" && !hasClaudeCLI() {
+			setStatus("Paste an Anthropic API key, or install Claude Code to use your Claude account.", colOrange)
+			keyEdit.SetFocus()
+			return
+		}
+		if key != "" {
+			saveKey(key)
+		}
+		autoBtn.SetEnabled(false)
+		autoBtn.SetText("CLAUDE IS THINKING...")
+		setStatus("Usually 10-40 seconds.", colMuted)
+		go func() {
+			res, err := fillIn(key, g, t, s)
+			mw.Synchronize(func() {
+				autoBtn.SetEnabled(true)
+				autoBtn.SetText("AUTO-FILL WITH CLAUDE")
+				if err != nil {
+					setStatus("Auto-fill failed: "+err.Error(), colOrange)
+					return
+				}
+				how.SetText(res.HowItActs)
+				beh.SetText(res.Behaviors)
+				extras.SetText(strings.Join(res.Extras, "\r\n"))
+				update()
+				setStatus("Filled in. Edit anything you like, then copy.", colCryo)
+			})
+		}()
+	}
+	copyBtn.onClick = func() {
+		if err := walk.Clipboard().SetText(out.Text()); err != nil {
+			setStatus("Couldn't copy. Select the text and press Ctrl+C.", colOrange)
+			return
+		}
+		setStatus("Copied. Paste it into Word.", colCryo)
+	}
+	clearBtn.onClick = func() {
+		for _, e := range []*walk.LineEdit{gear, thing, source} {
+			e.SetText("")
+		}
+		for _, e := range []*walk.TextEdit{how, beh, extras} {
+			e.SetText("")
+		}
+		update()
+		gear.SetFocus()
+	}
+
+	field := SolidColorBrush{Color: colField}
+	big := Font{Family: "Segoe UI", PointSize: 12, Bold: true}
+	body := Font{Family: "Segoe UI", PointSize: 10}
+	input := func(assign **walk.LineEdit, cue string) Widget {
+		return LineEdit{AssignTo: assign, Font: big, CueBanner: cue, Background: field, TextColor: colText, OnTextChanged: update}
+	}
+	box := func(assign **walk.TextEdit, h int) Widget {
+		return TextEdit{AssignTo: assign, MinSize: Size{Height: h}, VScroll: true, Font: body, Background: field, TextColor: colText, OnTextChanged: update}
+	}
 
 	err := MainWindow{
-		AssignTo: &mw,
-		Title:    "Gear Prompt Forge",
-		MinSize:  Size{Width: 760, Height: 640},
-		Size:     Size{Width: 980, Height: 820},
-		Font:     Font{Family: "Segoe UI", PointSize: 10},
-		Layout:   VBox{Margins: Margins{Left: 14, Top: 12, Right: 14, Bottom: 12}, Spacing: 8},
+		AssignTo:   &mw,
+		Title:      "Gear Prompt Forge",
+		MinSize:    Size{Width: 780, Height: 680},
+		Size:       Size{Width: 1000, Height: 860},
+		Font:       body,
+		Background: SolidColorBrush{Color: colBG},
+		Layout:     VBox{Margins: Margins{Left: 16, Top: 10, Right: 16, Bottom: 14}, Spacing: 8},
 		Children: []Widget{
+			header(),
 			Composite{
-				Layout: Grid{Columns: 5, MarginsZero: true, Spacing: 8},
+				Background: SolidColorBrush{Color: colBG},
+				Layout:     HBox{MarginsZero: true, Spacing: 8, Alignment: AlignHNearVNear},
 				Children: []Widget{
-					Label{Text: "Gear Type"},
-					Label{Text: ""},
-					Label{Text: "Weapon or Object/Thing"},
-					Label{Text: ""},
-					Label{Text: "Source Material"},
-					LineEdit{AssignTo: &gear, Font: big, CueBanner: "Laser Rifle", OnTextChanged: update},
-					Label{Text: "based on", Font: fixed},
-					LineEdit{AssignTo: &thing, Font: big, CueBanner: "Brimstone", OnTextChanged: update},
-					Label{Text: "from", Font: fixed},
-					LineEdit{AssignTo: &source, Font: big, CueBanner: "The Binding of Isaac", OnTextChanged: update},
+					fieldCol("GEAR TYPE", input(&gear, "Laser Rifle")),
+					joiner("based on", 92),
+					fieldCol("WEAPON OR OBJECT/THING", input(&thing, "Brimstone")),
+					joiner("from", 56),
+					fieldCol("SOURCE MATERIAL", input(&source, "The Binding of Isaac")),
 				},
 			},
 			Composite{
-				Layout: HBox{MarginsZero: true, Spacing: 8},
+				Background: SolidColorBrush{Color: colBG},
+				Layout:     HBox{MarginsZero: true, Spacing: 12},
 				Children: []Widget{
-					PushButton{
-						AssignTo: &autoBtn,
-						Text:     "Auto-fill with Claude",
-						OnClicked: func() {
-							g, t, s := strings.TrimSpace(gear.Text()), strings.TrimSpace(thing.Text()), strings.TrimSpace(source.Text())
-							key := strings.TrimSpace(keyEdit.Text())
-							if g == "" || t == "" || s == "" {
-								status.SetText("Fill in all three boxes first.")
-								return
-							}
-							if key == "" && !hasClaudeCLI() {
-								status.SetText("Paste an Anthropic API key, or install Claude Code to use your Claude account.")
-								keyEdit.SetFocus()
-								return
-							}
-							if key != "" {
-								saveKey(key)
-							}
-							autoBtn.SetEnabled(false)
-							status.SetText("Claude is thinking... (usually 10-40 seconds)")
-							go func() {
-								res, err := fillIn(key, g, t, s)
-								mw.Synchronize(func() {
-									autoBtn.SetEnabled(true)
-									if err != nil {
-										status.SetText("Auto-fill failed: " + err.Error())
-										return
-									}
-									how.SetText(res.HowItActs)
-									beh.SetText(res.Behaviors)
-									extras.SetText(strings.Join(res.Extras, "\r\n"))
-									update()
-									status.SetText("Filled in. Edit anything you like, then copy.")
-								})
-							}()
-						},
-					},
-					Label{Text: "Anthropic API key (optional if Claude Code is installed):"},
-					LineEdit{AssignTo: &keyEdit, PasswordMode: true, CueBanner: "sk-ant-...", Text: loadKey()},
+					autoBtn.widget(270),
+					Label{Text: "API key (optional if Claude Code is installed):", TextColor: colMuted},
+					LineEdit{AssignTo: &keyEdit, PasswordMode: true, CueBanner: "sk-ant-...", Text: loadKey(), Background: field, TextColor: colText},
 				},
 			},
-			Label{Text: "How it acts (optional, fills [how it acts])"},
-			TextEdit{AssignTo: &how, MinSize: Size{Height: 44}, VScroll: true, OnTextChanged: update},
-			Label{Text: "Behaviors it needs (optional, fills [behaviors it needs])"},
-			TextEdit{AssignTo: &beh, MinSize: Size{Height: 44}, VScroll: true, OnTextChanged: update},
-			Label{Text: "Extra * bullets (optional, one per line)"},
-			TextEdit{AssignTo: &extras, MinSize: Size{Height: 60}, VScroll: true, OnTextChanged: update},
-			Label{Text: "Your prompt"},
-			TextEdit{AssignTo: &out, ReadOnly: true, VScroll: true, StretchFactor: 4, Font: Font{Family: "Segoe UI", PointSize: 10}},
+			sectionLabel("HOW IT ACTS"),
+			box(&how, 44),
+			sectionLabel("BEHAVIORS IT NEEDS"),
+			box(&beh, 44),
+			sectionLabel("EXTRA * BULLETS (ONE PER LINE)"),
+			box(&extras, 60),
+			sectionLabel("YOUR PROMPT"),
+			TextEdit{AssignTo: &out, ReadOnly: true, VScroll: true, StretchFactor: 4, Font: body, Background: SolidColorBrush{Color: colPanel}, TextColor: colText},
 			Composite{
-				Layout: HBox{MarginsZero: true},
+				Background: SolidColorBrush{Color: colBG},
+				Layout:     HBox{MarginsZero: true, Spacing: 12},
 				Children: []Widget{
-					PushButton{
-						Text: "Copy for Word",
-						OnClicked: func() {
-							if err := walk.Clipboard().SetText(out.Text()); err != nil {
-								status.SetText("Couldn't copy. Select the text and press Ctrl+C.")
-								return
-							}
-							status.SetText("Copied. Paste it into Word.")
-						},
-					},
-					PushButton{
-						Text: "Clear",
-						OnClicked: func() {
-							for _, e := range []*walk.LineEdit{gear, thing, source} {
-								e.SetText("")
-							}
-							for _, e := range []*walk.TextEdit{how, beh, extras} {
-								e.SetText("")
-							}
-							update()
-							gear.SetFocus()
-						},
-					},
-					Label{AssignTo: &status},
+					copyBtn.widget(200),
+					clearBtn.widget(120),
+					Label{AssignTo: &status, TextColor: colText, Font: Font{Family: "Segoe UI", PointSize: 10, Bold: true}},
 					HSpacer{},
 				},
 			},
@@ -171,6 +182,9 @@ func main() {
 	if err != nil {
 		walk.MsgBox(nil, "Gear Prompt Forge", err.Error(), walk.MsgBoxIconError)
 		return
+	}
+	for _, b := range []*lootButton{autoBtn, copyBtn, clearBtn} {
+		b.cw.SetCursor(walk.CursorHand())
 	}
 	update()
 	mw.Run()
