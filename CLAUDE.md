@@ -35,3 +35,8 @@ vertical slice → assets → verify in game → showcase → publish.
   no expression-bodied members.
 - Test changes against real games when possible (`um scan <installed game>`, `um video compile` on a small
   EDL, `um sprite` on `examples/*/assets`). Keep `um --help` output accurate.
+
+## Gear prompt shortcut
+If the user writes "[Gear Type] based on [Weapon or Object/Thing] from [Source Material]" (e.g. "Laser Rifle
+based on The Binding of Isaac's Brimstone"), don't start modding: use the `bltps-gear-prompt` skill
+(`skills/bltps-gear-prompt/SKILL.md`) and reply with the filled-in Borderlands: The Pre-Sequel prompt template.
