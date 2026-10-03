@@ -1,6 +1,7 @@
 // Gear Prompt Forge: a small Windows app that fills in the Borderlands: The
 // Pre-Sequel gear prompt template (same template as skills/bltps-gear-prompt).
-// Works fully offline. Build with build.sh.
+// Auto-fill asks Claude through an Anthropic API key, or through Claude Code
+// (`claude -p`) when it is installed. Everything else works offline. Build with build.sh.
 package main
 
 import (
@@ -44,6 +45,8 @@ func main() {
 	var gear, thing, source *walk.LineEdit
 	var how, beh, extras, out *walk.TextEdit
 	var status *walk.Label
+	var keyEdit *walk.LineEdit
+	var autoBtn *walk.PushButton
 
 	update := func() {
 		if out == nil || gear == nil || thing == nil || source == nil || how == nil || beh == nil || extras == nil {
@@ -79,6 +82,50 @@ func main() {
 					LineEdit{AssignTo: &thing, Font: big, CueBanner: "Brimstone", OnTextChanged: update},
 					Label{Text: "from", Font: fixed},
 					LineEdit{AssignTo: &source, Font: big, CueBanner: "The Binding of Isaac", OnTextChanged: update},
+				},
+			},
+			Composite{
+				Layout: HBox{MarginsZero: true, Spacing: 8},
+				Children: []Widget{
+					PushButton{
+						AssignTo: &autoBtn,
+						Text:     "Auto-fill with Claude",
+						OnClicked: func() {
+							g, t, s := strings.TrimSpace(gear.Text()), strings.TrimSpace(thing.Text()), strings.TrimSpace(source.Text())
+							key := strings.TrimSpace(keyEdit.Text())
+							if g == "" || t == "" || s == "" {
+								status.SetText("Fill in all three boxes first.")
+								return
+							}
+							if key == "" && !hasClaudeCLI() {
+								status.SetText("Paste an Anthropic API key, or install Claude Code to use your Claude account.")
+								keyEdit.SetFocus()
+								return
+							}
+							if key != "" {
+								saveKey(key)
+							}
+							autoBtn.SetEnabled(false)
+							status.SetText("Claude is thinking... (usually 10-40 seconds)")
+							go func() {
+								res, err := fillIn(key, g, t, s)
+								mw.Synchronize(func() {
+									autoBtn.SetEnabled(true)
+									if err != nil {
+										status.SetText("Auto-fill failed: " + err.Error())
+										return
+									}
+									how.SetText(res.HowItActs)
+									beh.SetText(res.Behaviors)
+									extras.SetText(strings.Join(res.Extras, "\r\n"))
+									update()
+									status.SetText("Filled in. Edit anything you like, then copy.")
+								})
+							}()
+						},
+					},
+					Label{Text: "Anthropic API key (optional if Claude Code is installed):"},
+					LineEdit{AssignTo: &keyEdit, PasswordMode: true, CueBanner: "sk-ant-...", Text: loadKey()},
 				},
 			},
 			Label{Text: "How it acts (optional, fills [how it acts])"},
