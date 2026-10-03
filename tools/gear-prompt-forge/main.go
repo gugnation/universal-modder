@@ -5,6 +5,7 @@
 package main
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/lxn/walk"
@@ -42,6 +43,7 @@ func buildPrompt(g, t, s, how, beh, extras string) string {
 
 func main() {
 	displayFamily = loadFonts()
+	cleanupOldExe()
 
 	var mw *walk.MainWindow
 	var gear, thing, source *walk.LineEdit
@@ -191,5 +193,22 @@ func main() {
 		b.cw.SetCursor(walk.CursorHand())
 	}
 	update()
+
+	// Auto-update in the background. If nothing has been typed yet, restart
+	// straight into the new version; otherwise it is used next launch.
+	go func() {
+		n, err := checkAndInstallUpdate()
+		if err != nil || n == 0 {
+			return
+		}
+		mw.Synchronize(func() {
+			idle := gear.Text() == "" && thing.Text() == "" && source.Text() == "" && how.Text() == "" && beh.Text() == "" && extras.Text() == ""
+			if idle && relaunch() == nil {
+				mw.Close()
+				return
+			}
+			setStatus(fmt.Sprintf("Updated to v%d. Close and reopen the app to use it.", n), colCryo)
+		})
+	}()
 	mw.Run()
 }

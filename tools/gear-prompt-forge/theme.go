@@ -138,7 +138,11 @@ func header() Widget {
 			sub := mustFont("Segoe UI", 9, walk.FontBold)
 			defer sub.Dispose()
 			outlinedText(c, "GEAR PROMPT FORGE", title, colYellow, walk.Rectangle{X: s(18), Y: s(10), Width: b.Width, Height: s(54)}, walk.TextLeft|walk.TextVCenter|walk.TextSingleLine, s(3))
-			c.DrawTextPixels("BORDERLANDS: THE PRE-SEQUEL  //  LOOT PROMPT FABRICATOR", sub, colMuted, walk.Rectangle{X: s(22), Y: s(62), Width: b.Width, Height: s(20)}, walk.TextLeft|walk.TextVCenter|walk.TextSingleLine)
+			ver := "DEV BUILD"
+			if version != "dev" {
+				ver = "V" + version
+			}
+			c.DrawTextPixels("BORDERLANDS: THE PRE-SEQUEL  //  LOOT PROMPT FABRICATOR  //  "+ver, sub, colMuted, walk.Rectangle{X: s(22), Y: s(62), Width: b.Width, Height: s(20)}, walk.TextLeft|walk.TextVCenter|walk.TextSingleLine)
 			return nil
 		},
 	}

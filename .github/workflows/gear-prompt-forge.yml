@@ -1,0 +1,37 @@
+# Builds Gear Prompt Forge and publishes it as a GitHub release whenever its
+# code changes. The app checks these releases on launch and updates itself.
+name: gear-prompt-forge
+on:
+  push:
+    paths:
+      - "tools/gear-prompt-forge/**"
+      - ".github/workflows/gear-prompt-forge.yml"
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: gear-prompt-forge-release
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: tools/gear-prompt-forge/go.mod
+          cache-dependency-path: tools/gear-prompt-forge/go.sum
+      - name: Build
+        env:
+          VERSION: ${{ github.run_number }}
+        run: tools/gear-prompt-forge/build.sh "$PWD/GearPromptForge.exe"
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: gear-prompt-forge-v${{ github.run_number }}
+        run: |
+          gh release create "$TAG" GearPromptForge.exe \
+            --target "$GITHUB_SHA" \
+            --title "Gear Prompt Forge v${{ github.run_number }}" \
+            --notes "Built from ${GITHUB_REF_NAME} @ ${GITHUB_SHA::7}. The app updates itself to this version on next launch." \
+            --latest=false

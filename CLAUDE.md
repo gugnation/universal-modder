@@ -40,3 +40,6 @@ vertical slice → assets → verify in game → showcase → publish.
 If the user writes "[Gear Type] based on [Weapon or Object/Thing] from [Source Material]" (e.g. "Laser Rifle
 based on The Binding of Isaac's Brimstone"), don't start modding: use the `bltps-gear-prompt` skill
 (`skills/bltps-gear-prompt/SKILL.md`) and reply with the filled-in Borderlands: The Pre-Sequel prompt template.
+The same template powers the Windows app in `tools/gear-prompt-forge/` (keep both in sync). Every push that
+touches that folder runs `.github/workflows/gear-prompt-forge.yml`, which publishes a `gear-prompt-forge-v<N>`
+release; the app updates itself to the newest one on launch.

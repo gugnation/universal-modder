@@ -34,7 +34,9 @@ func configPath() string {
 func loadKey() string {
 	if p := configPath(); p != "" {
 		if b, err := os.ReadFile(p); err == nil {
-			var c struct{ APIKey string `json:"apiKey"` }
+			var c struct {
+				APIKey string `json:"apiKey"`
+			}
 			if json.Unmarshal(b, &c) == nil && c.APIKey != "" {
 				return c.APIKey
 			}
@@ -142,4 +144,3 @@ func parseFill(raw string) (autoFill, error) {
 	out.Extras = kept
 	return out, nil
 }
-
