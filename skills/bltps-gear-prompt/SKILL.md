@@ -38,7 +38,7 @@ template below, filled in. The user pastes it into a Word document to use later,
 
 * Confirm the [Gear Type]'s model, animations, effects, and audio match the high-quality Borderlands aesthetic while clearly referencing [Source Material].
 
-* Test the weapon thoroughly in both single-player to ensure full functionality and balance.
+* Test the weapon thoroughly in both single-player & multiplayer/online co-op to ensure full functionality and balance.
 
 [optional extra * bullets go here]
 
@@ -60,7 +60,7 @@ User: `Laser Rifle based on The Binding of Isaac’s Brimstone`
 
 * Confirm the Laser Rifle's model, animations, effects, and audio match the high-quality Borderlands aesthetic while clearly referencing The Binding of Isaac.
 
-* Test the weapon thoroughly in both single-player to ensure full functionality and balance.
+* Test the weapon thoroughly in both single-player & multiplayer/online co-op to ensure full functionality and balance.
 
 * Name ideas: "Hellfire Tantrum" or "Mom's Disappointment", red text: "Mama's going to be so upset."
 
