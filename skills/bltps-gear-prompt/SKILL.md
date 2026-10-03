@@ -19,9 +19,10 @@ template below, filled in. The user pastes it into a Word document to use later,
 - After the original bullets, you **may add extra `*` bullets** that would help build the item, specific to
   it. Good candidates: a suggested parody name or two plus red-text flavour line, manufacturer (Hyperion,
   Jakobs, Maliwan, Tediore, Torgue, Vladof, Dahl, Bandit/Scav, Atlas, Eridian lasers...), rarity/legendary
-  status and which teleporter boss drops it, element (incl. Cryo), how it works with low gravity, Oz kits and
+  status, element (incl. Cryo), how it works with low gravity, Oz kits and
   oxygen, butt slams, character-specific interactions (Athena, Wilhelm, Nisha, Claptrap, Jack, Aurelia),
-  scaling across levels/UVHM, and card stats. Only add bullets that help this item.
+  scaling across levels/UVHM, and card stats. Only add bullets that help this item. Never add a "Dropped by" bullet or name a
+  boss or enemy that drops it: drops are random, with no dedicated drop source.
 - Outside the code block, add at most one short line (e.g. what you added). No other commentary.
 
 ## Template
