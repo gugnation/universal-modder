@@ -9,6 +9,7 @@ Subcommands (see `um --help`):
   win       Windows (and WSL): screenshots, recording with game-only audio, input, processes
   backup    snapshot and restore save folders before you touch them
   publish   lint a mod folder before sharing: game files, decompiled code, secrets, credits
+  llm       run open-weight LLMs locally: search Hugging Face, size vs this PC, download GGUF, serve (llama.cpp)
 """
 
 __version__ = "0.1.0"

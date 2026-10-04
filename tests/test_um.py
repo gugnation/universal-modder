@@ -13,7 +13,7 @@ from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from um import fal, publish, scan, sprite, video  # noqa: E402
+from um import fal, llm, publish, scan, sprite, video  # noqa: E402
 
 
 # --------------------------------------------------------------------------- scan
@@ -173,3 +173,118 @@ def test_compile_small_edl(tmp_path):
     video.compile_edl(tmp_path / "edl.json", str(tmp_path / "out.mp4"))
     info = video.probe(tmp_path / "out.mp4")
     assert abs(info["duration"] - (2 + 2 + 1.5)) < 0.15 and info["audio"]
+
+
+# --------------------------------------------------------------------------- llm
+
+HW_PC = dict(ram_gb=128, vram_gb=24, budget_gb=128 + 24 - llm.HEADROOM_GB, gpus=[{"name": "x", "vram_gb": 24}])
+
+
+def test_quant_labels_and_grouping():
+    G = 1 << 30
+    files = [dict(path=p, size=s * G) for p, s in [
+        ("UD-Q2_K_XL/GLM-5.3-Flash-UD-Q2_K_XL-00002-of-00003.gguf", 40),
+        ("UD-Q2_K_XL/GLM-5.3-Flash-UD-Q2_K_XL-00001-of-00003.gguf", 40),
+        ("UD-Q2_K_XL/GLM-5.3-Flash-UD-Q2_K_XL-00003-of-00003.gguf", 35),
+        ("GLM-5.3-Flash-IQ1_M.gguf", 72), ("GLM-5.3-Flash-Q4_K_M-00001-of-00004.gguf", 50),
+        ("GLM-5.3-Flash-Q4_K_M-00002-of-00004.gguf", 50), ("GLM-5.3-Flash-Q4_K_M-00003-of-00004.gguf", 50),
+        ("GLM-5.3-Flash-Q4_K_M-00004-of-00004.gguf", 45), ("mmproj-F16.gguf", 1), ("README.md", 0)]]
+    files[0]["lfs"] = {"size": 40 * G}
+    qs = llm.group_quants(files)
+    assert [(q["quant"], q["size_gb"], len(q["files"])) for q in qs] == [
+        ("IQ1_M", 72, 1), ("UD-Q2_K_XL", 115, 3), ("Q4_K_M", 195, 4)]
+    assert qs[1]["files"][0].endswith("00001-of-00003.gguf")
+    assert llm.quant_label("x/model.Q8_0.gguf") == "Q8_0" and llm.quant_label("m-BF16.gguf") == "BF16"
+
+
+def test_fit_and_pick():
+    assert llm.fit(10, HW_PC) == "gpu" and llm.fit(115, HW_PC) == "ram+gpu"
+    assert llm.fit(195, HW_PC) == "disk-paged" and llm.fit(400, HW_PC) == "no"
+    assert llm.fit(20, dict(HW_PC, vram_gb=0, budget_gb=26)) == "ram"
+    qs = [dict(quant=q, size_gb=s, files=[f"m-{q}.gguf"], fits=llm.fit(s, HW_PC)) for q, s in
+          [("IQ1_M", 72), ("UD-Q2_K_XL", 115), ("Q4_K_M", 195)]]
+    assert llm.pick(qs)["quant"] == "UD-Q2_K_XL"
+    assert llm.pick(qs, "q4_k_m")["quant"] == "Q4_K_M" and llm.pick(qs, "Q6_K") is None
+    assert llm.pick([dict(q, fits="no") for q in qs]) is None
+
+
+def test_server_cmd_offloads_experts_only_when_needed(tmp_path):
+    g = tmp_path / "m.gguf"
+    big = llm.server_cmd("llama-server", g, 115, HW_PC, 8192, 8080, "127.0.0.1")
+    small = llm.server_cmd("llama-server", g, 10, HW_PC, 8192, 8080, "127.0.0.1", ["-t", "8"])
+    assert "--cpu-moe" in big and "-ngl" in big and "--jinja" in big
+    assert "--cpu-moe" not in small and small[-2:] == ["-t", "8"]
+    if not llm.is_mac():
+        assert "-ngl" not in llm.server_cmd("llama-server", g, 10, dict(HW_PC, vram_gb=0), 8192, 8080, "h")
+
+
+def test_first_gguf_and_split_size(tmp_path):
+    for i in (1, 2):
+        (tmp_path / f"m-Q2_K-0000{i}-of-00002.gguf").write_bytes(b"x" * (10 * i))
+    (tmp_path / "mmproj-F16.gguf").write_bytes(b"y")
+    first = llm.first_gguf(str(tmp_path))
+    assert first.name == "m-Q2_K-00001-of-00002.gguf" and llm.model_bytes(first) == 30
+
+
+def test_hf_tree_pagination_and_resumable_download(tmp_path, monkeypatch):
+    import http.server
+    import threading
+
+    blob = bytes(range(256)) * 4096  # 1 MiB
+    seen = []
+
+    class H(http.server.BaseHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+
+        def do_GET(self):
+            seen.append((self.path, self.headers.get("Authorization")))
+            base = f"http://127.0.0.1:{self.server.server_port}"
+            if self.path.startswith("/api/models/o/r/tree/main"):
+                page2 = "cursor=2" in self.path
+                files = [dict(type="file", path=("b-Q2_K.gguf" if page2 else "a-Q8_0.gguf"),
+                              size=len(blob), lfs={"size": len(blob)}), dict(type="directory", path="d")]
+                body = json.dumps(files).encode()
+                self.send_response(200)
+                if not page2:
+                    self.send_header("Link", f'<{base}/api/models/o/r/tree/main?recursive=true&cursor=2>; rel="next"')
+            elif self.path.startswith("/o/r/resolve/"):
+                self.send_response(302)
+                self.send_header("Location", f"{base}/cdn/blob")
+                self.end_headers()
+                return
+            elif self.path == "/cdn/blob":
+                start = int((self.headers.get("Range") or "bytes=0-")[6:-1])
+                if start == 0:  # first attempt: drop the connection halfway
+                    self.send_response(200)
+                    self.send_header("Content-Length", str(len(blob)))
+                    self.end_headers()
+                    self.wfile.write(blob[:len(blob) // 2])
+                    self.wfile.flush()
+                    self.connection.shutdown(2)
+                    return
+                body = blob[start:]
+                self.send_response(206)
+            else:
+                self.send_response(404)
+                body = b"{}"
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    monkeypatch.setattr(llm, "HF", f"http://127.0.0.1:{srv.server_port}")
+    monkeypatch.setattr(llm.time, "sleep", lambda s: None)
+    monkeypatch.setenv("HF_TOKEN", "hf_secret")
+    try:
+        files = llm.tree("o/r")
+        assert [f["path"] for f in files] == ["a-Q8_0.gguf", "b-Q2_K.gguf"]
+        dest = tmp_path / "a-Q8_0.gguf"
+        llm.download("o/r", "a-Q8_0.gguf", dest, len(blob))
+        assert dest.read_bytes() == blob and not dest.with_name(dest.name + ".part").exists()
+    finally:
+        srv.shutdown()
+    assert all(auth == "Bearer hf_secret" for p, auth in seen if not p.startswith("/cdn"))
+    assert all(auth is None for p, auth in seen if p.startswith("/cdn"))  # token never sent to the CDN
+    assert sum(p == "/cdn/blob" for p, _ in seen) >= 2  # it resumed
