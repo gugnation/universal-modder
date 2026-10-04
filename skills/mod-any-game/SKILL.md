@@ -21,6 +21,7 @@ Python env through `uv`. Every group has `--help` with examples.
 |---|---|
 | What games are installed, what engine, what anti-cheat, where saves live | `um scan --list`, `um scan "<game>"` |
 | Sprites, textures, PBR, 3D models, rigs, SFX, music, voice, video (fal) | `um fal <recipe>`, or the fal MCP (`search_models`, `run_model`) |
+| Text or image → 3D model straight from a prompt (Mint) | `um mint model "<prompt>"` |
 | Cut out / fit / pixelate / pack sprites; 3D model → sprite frames | `um sprite ...`, `um render3d ...` |
 | Launch, screenshot, click/type, record a Windows game (also from WSL) | `um win ...` |
 | Snapshot saves before touching them; undo | `um backup create/diff/restore` |

@@ -13,7 +13,7 @@ from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from um import fal, publish, scan, sprite, video  # noqa: E402
+from um import cli, fal, mint, publish, scan, sprite, video  # noqa: E402
 
 
 # --------------------------------------------------------------------------- scan
@@ -142,6 +142,158 @@ def test_kv_and_urls(tmp_path):
     assert [u for _, u, _ in fal._urls_in(res)] == ["https://v3.fal.media/a.png", "https://v3.fal.media/b.png", "https://v3.fal.media/m.png"]
 
 
+# --------------------------------------------------------------------------- mint (against a local mock of the API)
+
+class MockMint:
+    """Tiny stand-in for api.mint.gg: routes[(method, path)] = [(status, headers, body), ...] served in order
+    (the last one repeats). Every request is logged with its headers and JSON body."""
+
+    def __init__(self):
+        import http.server
+        import threading
+        self.routes, self.log = {}, []
+        mock = self
+
+        class H(http.server.BaseHTTPRequestHandler):
+            def log_message(self, *a):
+                pass
+
+            def _serve(self):
+                n = int(self.headers.get("Content-Length") or 0)
+                raw = self.rfile.read(n) if n else b""
+                mock.log.append(dict(method=self.command, path=self.path, headers=dict(self.headers.items()),
+                                     body=json.loads(raw) if raw else None))
+                queue = mock.routes.get((self.command, self.path.split("?")[0]))
+                status, headers, body = (queue.pop(0) if len(queue) > 1 else queue[0]) if queue else (404, {}, {"title": "not found"})
+                data = body if isinstance(body, bytes) else json.dumps(body).encode()
+                self.send_response(status)
+                for k, v in headers.items():
+                    self.send_header(k, v)
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+            do_GET = do_POST = do_DELETE = _serve
+
+        self.server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
+        self.port = self.server.server_address[1]
+        self.api = f"http://127.0.0.1:{self.port}/v1"
+        self.cdn = f"http://localhost:{self.port}/cdn"      # another origin: must never see the key
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+
+    def on(self, method, path, *responses):
+        self.routes[(method, "/v1" + path if not path.startswith("/cdn") else path)] = list(responses)
+
+    def calls(self, method, path):
+        return [r for r in self.log if r["method"] == method and r["path"].split("?")[0].endswith(path)]
+
+
+@pytest.fixture
+def mock_mint(monkeypatch, tmp_path):
+    import urllib.request
+    m = MockMint()
+    monkeypatch.setenv("MINT_API_BASE_URL", m.api)
+    monkeypatch.setenv("MINT_API_KEY", "test-mint-key")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(mint, "_urlopen", urllib.request.build_opener(urllib.request.ProxyHandler({})).open)
+    monkeypatch.setattr(mint, "_sleep", lambda s: None)
+    yield m
+    m.server.shutdown()
+
+
+def op(status, **kw):
+    return (200, {}, {"object": "operation", "id": "op_1", "type": "model_generation", "status": status, **kw})
+
+
+def test_mint_model_end_to_end(mock_mint, tmp_path):
+    m = mock_mint
+    m.on("POST", "/pricing:estimate", (200, {}, {"object": "pricing_estimate", "credits": {"requiredToStart": 300, "estimatedTotal": 400}}))
+    m.on("GET", "/usage", (200, {}, {"object": "usage", "credits": {"totalAvailable": 5000}}))
+    m.on("POST", "/models:generate", (503, {}, {"title": "busy"}), (202, {"Location": "/v1/operations/op_1"}, op("queued")[2]))
+    m.on("GET", "/operations/op_1", op("running"), (200, {"Retry-After": "3"}, op("running")[2]),
+         op("succeeded", resource={"type": "model", "id": "mdl_1"}))
+    m.on("GET", "/assets/model/mdl_1/artifact-manifest", (200, {}, {"artifacts": [
+        {"fileName": "lamp.glb", "mimeType": "model/gltf-binary", "downloadUrl": m.api + "/assets/model/mdl_1/artifacts/a1/download"},
+        {"fileName": "lamp_optimized.glb", "mimeType": "model/gltf-binary", "downloadUrl": m.cdn + "/opt.glb"},
+        {"fileName": "preview.png", "role": "preview", "mimeType": "image/png", "downloadUrl": m.cdn + "/p.png"}],
+        "links": {"url": "https://mint.gg/models/mdl_1"}}))
+    m.on("GET", "/assets/model/mdl_1/artifacts/a1/download", (302, {"Location": m.cdn + "/lamp.glb"}, b""))
+    for f in ("lamp.glb", "opt.glb", "p.png"):
+        m.on("GET", f"/cdn/{f}", (200, {}, b"glTF" + f.encode()))
+
+    cli.main(["mint", "model", "A small ceramic lamp with an orange shade", "--idempotency-key", "orange-lamp",
+              "--max-credits", "10000", "--out", "gen"])
+
+    gen = m.calls("POST", "/models:generate")
+    assert len(gen) == 2 and {g["headers"]["Idempotency-Key"] for g in gen} == {"orange-lamp"}   # retried with the same key
+    assert gen[0]["body"] == {"prompt": "A small ceramic lamp with an orange shade", "generationPreset": "standard"}
+    assert gen[0]["headers"]["Authorization"] == "Bearer test-mint-key"
+    assert m.calls("POST", "/pricing:estimate")[0]["body"] == {"operation": "model_generation", "generationPreset": "standard", "generationMode": "auto"}
+    cdn = [r for r in m.log if r["path"].startswith("/cdn/")]
+    assert len(cdn) == 3 and not any("Authorization" in r["headers"] for r in cdn)     # the key never leaves the API origin
+    stem = "a_small_ceramic_lamp_with"
+    assert sorted(p.name for p in (tmp_path / "gen").iterdir()) == sorted(
+        [f"{stem}.glb", f"{stem}_lamp_optimized.glb", f"{stem}_preview.png", "mint_manifest.jsonl"])
+    assert (tmp_path / "gen" / f"{stem}.glb").read_bytes() == b"glTFlamp.glb"
+    rec = json.loads((tmp_path / "gen" / "mint_manifest.jsonl").read_text().splitlines()[-1])
+    assert rec["operation"] == "op_1" and rec["resource"]["id"] == "mdl_1" and rec["idempotency_key"] == "orange-lamp" and len(rec["files"]) == 3
+
+
+def test_mint_falls_back_to_model_assets(mock_mint, tmp_path):
+    m = mock_mint
+    m.on("GET", "/models/mdl_2", (200, {}, {"object": "model", "id": "mdl_2", "assets": {
+        "glbUrl": m.cdn + "/a.glb?sig=1", "fbxUrl": m.cdn + "/a.fbx", "previewImageUrl": m.cdn + "/a.webp", "objUrl": None}}))
+    for f in ("a.glb", "a.fbx", "a.webp"):
+        m.on("GET", f"/cdn/{f}", (200, {}, b"x"))
+    cli.main(["mint", "files", "mdl_2", "--out", "gen", "--name", "chest", "--formats", "glb,preview"])
+    assert sorted(p.name for p in (tmp_path / "gen").iterdir()) == ["chest.glb", "chest_preview.webp", "mint_manifest.jsonl"]
+
+
+def test_mint_max_credits_refuses_before_starting(mock_mint, capsys):
+    m = mock_mint
+    m.on("POST", "/pricing:estimate", (200, {}, {"credits": {"requiredToStart": 9000, "estimatedTotal": 12000}}))
+    with pytest.raises(SystemExit):
+        cli.main(["mint", "model", "a lamp", "--max-credits", "10000"])
+    assert "above --max-credits 10000" in capsys.readouterr().err and not m.calls("POST", "/models:generate")
+
+
+def test_mint_billing_and_review_stops(mock_mint, tmp_path, capsys):
+    m = mock_mint
+    m.on("POST", "/models:generate", op("billing_required", billing={"reason": "insufficient_credits", "requiredCredits": 400,
+                                                                     "availableCredits": 10, "actionUrl": "https://mint.gg/billing"}))
+    with pytest.raises(SystemExit):
+        cli.main(["mint", "model", "a lamp", "--idempotency-key", "k1"])
+    err = capsys.readouterr().err
+    assert "https://mint.gg/billing" in err and "--idempotency-key k1" in err
+
+    m.on("POST", "/models:generate", op("preview_ready", generationMode="review", assets={"previewImageUrl": m.cdn + "/prev.png"}))
+    m.on("GET", "/cdn/prev.png", (200, {}, b"png"))
+    cli.main(["mint", "model", "a lamp", "--review", "--name", "lamp", "--out", "gen"])
+    assert m.calls("POST", "/models:generate")[-1]["body"]["generationMode"] == "review"
+    assert (tmp_path / "gen" / "lamp_preview.png").exists() and "um mint approve op_1" in capsys.readouterr().err
+    assert not m.calls("POST", "/operations/op_1:approve")                                # never approved on its own
+
+
+def test_mint_validation_error_is_readable(mock_mint, capsys):
+    mock_mint.on("POST", "/models:generate", (422, {"X-Request-Id": "req_9"}, {
+        "type": "https://api.mint.gg/problems/validation", "title": "Invalid request",
+        "errors": [{"path": "/maxCredits", "code": "unknown_field", "message": "is not allowed"}]}))
+    with pytest.raises(SystemExit):
+        cli.main(["mint", "model", "a lamp", "--set", "maxCredits:=10000"])
+    err = capsys.readouterr().err
+    assert "/maxCredits: is not allowed" in err and "req_9" in err and "test-mint-key" not in err
+    assert len(mock_mint.calls("POST", "/models:generate")) == 1                       # 4xx is never retried
+
+
+def test_mint_needs_key(monkeypatch, tmp_path, capsys):
+    monkeypatch.delenv("MINT_API_KEY", raising=False)
+    monkeypatch.delenv("MINT_API_KEY_FILE", raising=False)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(mint, "__file__", str(tmp_path / "um" / "mint.py"))   # no repo .env either
+    with pytest.raises(SystemExit):
+        cli.main(["mint", "usage"])
+    assert "MINT_API_KEY is not set" in capsys.readouterr().err
+
+
 # --------------------------------------------------------------------------- publish
 
 def test_publish_check(tmp_path, capsys):
@@ -156,6 +308,14 @@ def test_publish_check(tmp_path, capsys):
     out = capsys.readouterr().out
     assert "game file copied verbatim" in out and "FAL_KEY assignment" in out and "Ghidra auto-name" in out
     assert "decompiler header x1 in src/Mod.cs" in out and "README.md" not in out.split("decompiler header")[-1].split("\n")[0]
+
+
+def test_publish_check_mint(tmp_path, capsys):
+    make(tmp_path / "mod", {"README.md": "Lamp mod. Models by fal.", "assets/mint_manifest.jsonl": "{}",
+                            "cfg.ini": "MINT" + "_API_KEY = " + "mint_live_abcdefghijklmnopqrstuvwxyz"})
+    assert publish.check(str(tmp_path / "mod")) == 1
+    out = capsys.readouterr().out
+    assert "MINT_API_KEY assignment in cfg.ini" in out and "mint-generated assets" in out
 
 
 # --------------------------------------------------------------------------- video

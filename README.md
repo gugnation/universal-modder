@@ -36,6 +36,7 @@ server and the `um fal` CLI:
 ```bash
 export FAL_KEY=...
 ```
+For text-to-3D with Mint (`um mint`), also `export MINT_API_KEY=...` ([docs](https://docs.mint.gg/developers/quickstart)).
 You also need Python 3.10+ and ffmpeg. `uv` is recommended; the CLI sets up its own env with it. Blender is
 needed for 3D → sprite renders. Windows games are driven natively or from WSL.
 
@@ -61,7 +62,7 @@ real game, record, then package.
 | `mod-any-game` | The whole loop, hard safety rules, and **12 engine playbooks**: Unity, Unreal, .NET/XNA (Terraria, Stardew, Celeste), Godot, Source 1/2, Bethesda, Minecraft, AoE2/Genie, RE Engine/FromSoft/GTA/Cyberpunk/BG3, native C++, indie engines (GameMaker, RPG Maker, Ren'Py, Paradox, Doom, HTML5, LÖVE, Java), retro decomps |
 | `game-recon` | Which engine and version, managed or native, anti-cheat, loaders, save folders, community route → `MODDING_PLAN.md` |
 | `reverse-engineering` | ILSpy / Cpp2IL / Vineflower / Ghidra and IDA over MCP / Cheat Engine / Frida / RenderDoc; reverse-engineer a file format and prove it with a round trip |
-| `fal-assets` | Sprites with real transparency, consistent variants, pixel art, seamless textures, PBR maps, image-to-3D, auto-rigging, SFX, music, voice, cutscene video |
+| `fal-assets` | Sprites with real transparency, consistent variants, pixel art, seamless textures, PBR maps, image-to-3D (fal) and text-to-3D (Mint), auto-rigging, SFX, music, voice, cutscene video |
 | `asset-pipeline` | Art → engine-exact frames: cutout, nearest-neighbour fit, palettes, sheets, team-colour masks, 3D → 8/16-heading sprites |
 | `game-automation` | Launch, screenshot (GPU-safe), click/type, windowed mode, crash-reporter cleanup, in-game agent bridges |
 | `showcase-video` | Record the window with only the game's audio, pick moments, cut a styled video from an EDL |
@@ -74,6 +75,7 @@ real game, record, then package.
 |---|---|
 | `um scan` | Find Steam/Epic/Xbox installs; fingerprint engine and version, .NET vs native, anti-cheat, installed loaders, save folders, ranked routes |
 | `um fal` | `sprite`, `image`, `edit`, `rmbg`, `pixelate`, `upscale`, `texture`, `pbr`, `model3d`, `rig`, `sfx`, `music`, `voice`, `video`, `run`, `search`, `schema`, `price`. Plain REST, with a manifest of every generation |
+| `um mint` | Text or image → 3D model with [Mint](https://mint.gg): `model`, `approve`/`revise`, `wait`, `files`, `optimize`, `convert`, `estimate`, `usage`, `api`. Credit cap, safe retries, every file downloaded |
 | `um sprite` | `cutout`, `fit`, `pixelate`, `palette`, `sheet`, `slice`, `frames`, `team-mask`, `seamless`, `preview` |
 | `um render3d` | GLB → sprite frames from the game's camera (`aoe2`, `iso8`, `trueiso`, `topdown`, `side`, `turntable`) with Blender |
 | `um win` | `shot`, `record` (gfxcapture + process-loopback audio), `drive` (input that only reaches the game), `ps`, `kill`, `launch`, `reg` |

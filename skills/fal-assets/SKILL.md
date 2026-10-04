@@ -1,6 +1,6 @@
 ---
 name: fal-assets
-description: Generate game assets with fal (fal.ai) through the fal MCP server, the `um fal` CLI (REST) or `fal api`. Covers sprites and icons with transparent backgrounds, consistent variants and animation frames, pixel art, seamless textures, PBR material maps, image-to-3D models, remeshing, auto-rigging, sound effects, music, voice lines, and trailer or cutscene video. Use whenever a mod needs new art, audio or 3D models, or the user mentions fal, generating sprites, textures, models, SFX or music for a game.
+description: Generate game assets with fal (fal.ai) through the fal MCP server, the `um fal` CLI (REST) or `fal api`, and 3D models with Mint (`um mint`). Covers sprites and icons with transparent backgrounds, consistent variants and animation frames, pixel art, seamless textures, PBR material maps, image-to-3D and text-to-3D models, remeshing, auto-rigging, sound effects, music, voice lines, and trailer or cutscene video. Use whenever a mod needs new art, audio or 3D models, or the user mentions fal, Mint, generating sprites, textures, models, SFX or music for a game.
 ---
 
 # Game assets with fal
@@ -61,6 +61,30 @@ Other useful endpoints:
 - Music: `google/lyria-3.5`.
 - Voice: `fal-ai/minimax/speech-2.8-hd`.
 
+## 3D models from a prompt with Mint (`um mint`)
+[Mint](https://mint.gg) turns text, one image, or 2-8 views of one object into a textured model (GLB, plus FBX,
+OBJ, USDZ, STL when available). It needs its own key: `MINT_API_KEY` (env or `.env`); `um mint me` checks it.
+```bash
+um mint model "a small ceramic lamp with an orange shade, game prop" --name lamp --max-credits 10000
+um mint model "a knight, full body" --rigging-pose t_pose --preset production   # riggable pose, then `um fal rig`
+um mint model --image concept.png --image back.png --name unit                  # image(s) -> 3D
+um mint model "a treasure chest" --review   # Preview first; then `um mint approve <op>` or `um mint revise <op> "..."`
+um mint optimize <model-id>                 # lighter GLB for the engine; `um mint convert <model-id> fbx` for others
+```
+- **Route is `POST /v1/models:generate`** (`um mint model`); any other route goes through
+  `um mint api <METHOD> <path> key=value key:=json`. The source of truth for fields is
+  `https://api.mint.gg/openapi.json`; don't invent fields.
+- **Credits:** `--preset fast` while exploring, `standard` by default, `production` for the keeper. `um mint estimate`
+  and `um mint usage` before a batch; `--max-credits N` refuses to start above Mint's estimate. On
+  `billing_required` the command prints the top-up link and the exact command to resume.
+- **Retries never double-bill:** every POST carries an `Idempotency-Key`. Reuse a key (`--idempotency-key`) only
+  to retry the very same request. If the command is interrupted, `um mint wait <operation-id>` picks it up.
+- **Files** land in `--out` (default `assets/gen`) as `<name>.glb`, `<name>_optimized.glb`, `<name>.fbx`,
+  `<name>_preview.png`...; `<out>/mint_manifest.jsonl` records the prompt, preset, operation and model ids.
+  Download links expire; `um mint files <model-id>` fetches fresh ones.
+- **Reviews:** never approve a Preview on the user's behalf unless they said so; show it and ask.
+- Assets belong to the user's Mint account and show up in Mint's web app too. Credit Mint in the mod's README.
+
 ## Prompting game art that fits the game
 - **Look at the game's own assets first:** pixel size, outline, palette, perspective, facing, how busy they
   are. Put that into a reusable style suffix. For Terraria: *"16-bit pixel art game sprite in the style of
@@ -99,5 +123,5 @@ Other useful endpoints:
 - **Iterate cheap:** use low quality or resolution while exploring (`--quality low`, `--res 0.5K`), then
   re-run the winners at full quality with the same prompt (and seed where supported).
 - **Reproducibility:** keep `fal_manifest.jsonl` with the assets; it records prompts, seeds and request ids.
-- **Credits:** in the mod's README, credit that assets were generated with fal and name the models. Check a
+- **Credits:** in the mod's README, credit that assets were generated with fal (or Mint) and name the models. Check a
   model's license page for commercial use.

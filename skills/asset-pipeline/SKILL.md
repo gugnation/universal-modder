@@ -45,6 +45,7 @@ um sprite preview item.png look.png --scale 6             # checkerboard + zoom:
 ## 3. 3D → sprites (consistent angles and animations)
 ```bash
 um fal model3d concept.png --name unit                   # textured GLB (Trellis 2 by default)
+# or straight from text: um mint model "<unit>, game asset" --name unit   (Mint; see fal-assets)
 um render3d assets/gen/unit.glb frames/ --preset aoe2 --length 80 --forward-yaw -90 \
   --anims idle:10:bob,walk:12:walk,attack:16:lunge,death:20:die --shadows --samples 40
 um render3d assets/gen/unit.glb side/ --preset side --canvas 128 --length 110 --engine eevee   # platformer facing R + L

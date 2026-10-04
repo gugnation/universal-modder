@@ -10,6 +10,7 @@ vertical slice → assets → verify in game → showcase → publish.
   Every group has `--help`:
   - `scan`: installed games, engine, anti-cheat, loaders, saves, routes
   - `fal`: sprites, textures, PBR, 3D, rigs, SFX, music, voice, video
+  - `mint`: text/image → 3D models via Mint (GLB/FBX/OBJ/USDZ, optimize, convert; needs `MINT_API_KEY`)
   - `sprite`, `render3d`: art → engine-ready frames
   - `win`: launch / screenshot / input / record on Windows, also from WSL
   - `video`: contact sheets, EDL-based showcase edits, muxing
