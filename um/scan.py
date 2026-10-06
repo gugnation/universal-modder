@@ -323,9 +323,13 @@ LOADERS = [
     ("Fabric/Forge profile", ("*fabric-loader*", "*neoforge*", "*forge-*.jar")),
     ("Steamodded (Balatro)", ("*steamodded*",)),
     ("Hollow Knight Modding API", ("*modding api*", "*/managed/mods/*")),
+    ("REPENTOGON (Isaac)", ("*repentogon*", "libzhl.dll")),
 ]
 
 MOD_DIRS = ["mods", "mod", "addons", "plugins", "custom", "workshop", "usermods", "~mods", "content/paks/~mods", "data/scripts", "bepinex/plugins"]
+
+ISAAC_ROUTE = ("Lua mods in <install>/mods/<Mod>/ (main.lua + content/*.xml + resources/ overrides, ANM2 sprites); "
+               "REPENTOGON for the extended API and custom achievements")
 
 # known games: better routes than the engine default
 KNOWN = {
@@ -354,6 +358,8 @@ KNOWN = {
     "half-life 2": ("Source SDK 2013 mods (C++), maps with Hammer", "source.md"),
     "doom": ("WAD/PK3 mods with a source port (GZDoom/UZDoom)", "misc-engines.md"),
     "minecraft": ("Fabric (Mixin) or NeoForge", "minecraft.md"),
+    "the binding of isaac: rebirth": (ISAAC_ROUTE, "isaac.md"),
+    "the binding of isaac rebirth": (ISAAC_ROUTE, "isaac.md"),
 }
 
 # save/profile folders that don't follow the game's name ({profile}, {documents}, {appdata}, {localappdata})
@@ -368,6 +374,8 @@ KNOWN_SAVES = {
     "grand theft auto v legacy": ["{documents}/Rockstar Games/GTA V"],
     "cyberpunk 2077": ["{profile}/Saved Games/CD Projekt Red/Cyberpunk 2077"],
     "counter-strike 2": [],
+    "the binding of isaac: rebirth": ["{documents}/My Games/Binding of Isaac Repentance+", "{documents}/My Games/Binding of Isaac Repentance",
+                                      "{documents}/My Games/Binding of Isaac Afterbirth+", "{documents}/My Games/Binding of Isaac Afterbirth+ Mods"],
 }
 
 ONLINE_ONLY = ["valorant", "league of legends", "fortnite", "apex legends", "pubg", "rainbow six siege", "call of duty", "destiny 2",
@@ -404,6 +412,7 @@ ENGINES = {
     "defold": ("Defold", "misc-engines.md", "unpack game.arcd; Lua scripts"),
     "cocos": ("Cocos2d-x", "native.md", "Lua/JS scripts if bundled; else native hooks"),
     "haxe": ("Haxe/OpenFL/HaxeFlixel", "misc-engines.md", "assets/ overrides; hscript mod loaders where present (Polymod)"),
+    "isaac": ("Binding of Isaac engine (C++, Lua mod API)", "isaac.md", ISAAC_ROUTE),
     "native": ("Unknown native engine", "native.md", "proxy-DLL loader + function hooks (MinHook/SafetyHook), memory reading; Ghidra/IDA + x64dbg + Cheat Engine"),
 }
 
@@ -548,6 +557,13 @@ def detect(ix: Index) -> tuple[list[tuple[str, int, list[str], dict]], dict]:
     if ix.has("*.wad", "*.pk3", "base/*.pk4", "id1/pak0.pak", "base/*.resources"):
         add("idtech", 70, ix.find("*.wad", "*.pk3", "base/*.pk4", "id1/pak0.pak", "base/*.resources")[:2])
 
+    # The Binding of Isaac: Rebirth (Afterbirth+ / Repentance / Repentance+)
+    if ix.has("isaac-ng.exe") or (ix.has("resources/packed/*.a") and ix.has("resources/scripts/*.lua")):
+        mods = {f.split("/")[1] for f in ix.find("mods/*/main.lua", "mods/*/metadata.xml")}
+        det = dict(dlc="Repentance or later" if ix.has_dir("resources-dlc3") else None, mods=len(mods),
+                   extracted=ix.has_dir("extracted_resources", "extracted-resources") or ix.has("resources/items.xml", "resources-dlc3/items.xml"))
+        add("isaac", 100, ix.find("isaac-ng.exe", "resources/packed/*.a")[:2], **det)
+
     # CryEngine, Frostbite
     if ix.has("*crysystem.dll"):
         add("cryengine", 95, ix.find("*crysystem.dll")[:1])
@@ -580,9 +596,28 @@ def detect(ix: Index) -> tuple[list[tuple[str, int, list[str], dict]], dict]:
     return hits, facts
 
 
-def save_hints(name: str, det: dict) -> list[str]:
-    """Existing folders where this game probably keeps saves/config (Windows side)."""
-    wf = win_folders()
+def proton_folders(appid: str | None) -> dict:
+    """The Windows shell folders inside a Steam Proton prefix (Linux / Steam Deck)."""
+    if not appid or is_windows() or is_wsl() or is_mac():
+        return {}
+    for root in steam_roots():
+        user = root / "steamapps/compatdata" / str(appid) / "pfx/drive_c/users/steamuser"
+        if user.is_dir():
+            return dict(profile=str(user), documents=str(user / "Documents"), appdata=str(user / "AppData/Roaming"),
+                        localappdata=str(user / "AppData/Local"))
+    return {}
+
+
+def steam_cloud(appid: str | None) -> list[str]:
+    """Steam Cloud copies of a game's saves: <Steam>/userdata/<account>/<appid>/remote."""
+    if not appid:
+        return []
+    return [str(d) for root in steam_roots() for d in sorted((root / "userdata").glob(f"*/{appid}/remote")) if d.is_dir()]
+
+
+def save_hints(name: str, det: dict, appid: str | None = None) -> list[str]:
+    """Existing folders where this game probably keeps saves/config (Windows side, or the Proton prefix)."""
+    wf = win_folders() or proton_folders(appid)
     prof, docs = wf.get("profile"), wf.get("documents")
     appdata, local = wf.get("appdata"), wf.get("localappdata")
     base = re.sub(r"[:®™]", "", name or "")
@@ -604,6 +639,7 @@ def save_hints(name: str, det: dict) -> list[str]:
         cands += [Path.home() / "Library/Application Support" / n for n in names]
     if not is_windows() and not is_wsl():
         cands += [Path.home() / ".local/share" / n for n in names] + [Path.home() / ".config" / n for n in names]
+    cands += [Path(d) for d in steam_cloud(appid)]
     out, seen = [], set()
     for c in cands:
         try:
@@ -651,7 +687,7 @@ def scan(query: str) -> dict:
         engine=dict(key=key, label=label, confidence=score, evidence=ev, **{k: v for k, v in det.items() if v not in (None, "")}),
         other_engine_signals=[dict(key=h[0], evidence=h[2]) for h in hits[1:4]],
         anti_cheat=anti, mod_loaders_installed=loaders, mod_folders=moddirs,
-        workshop=game.get("workshop"), saves=save_hints(name, det),
+        workshop=game.get("workshop"), saves=save_hints(name, det, game.get("appid")),
         executables=facts.get("executables", {}), routes=routes, warnings=warnings,
         playbook=f"skills/mod-any-game/references/engines/{routes[0]['playbook']}",
         files_indexed=len(ix.files), index_truncated=ix.truncated,

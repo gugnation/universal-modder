@@ -156,6 +156,7 @@ fal-generated assets, and be honest that it was built with AI. Ship no game file
   - families and frameworks: `dotnet-xna.md` (Terraria, Stardew, Celeste), `bethesda.md`,
     `big-frameworks.md` (RE Engine, FromSoft, GTA, Cyberpunk, BG3), `misc-engines.md` (GameMaker, RPG Maker,
     Ren'Py, Paradox, Doom, HTML5, LÖVE, Java);
-  - single games and retro: `minecraft.md`, `genie-aoe2.md`, `retro-decomp.md`.
+  - single games and retro: `minecraft.md`, `genie-aoe2.md` (Age of Empires II), `isaac.md` (The Binding of
+    Isaac: Lua mods, XML content, ANM2 sprites, REPENTOGON achievements), `retro-decomp.md`.
 - `references/case-studies.md`: Terraria and AoE2 end to end, every non-obvious fact.
 - `references/safety.md`: the rules with their reasons, anti-cheat and legal hygiene.

@@ -64,6 +64,14 @@ def test_gamemaker_and_rpgmaker(tmp_path):
     assert engine_of(tmp_path / "b", {"www/js/rpg_core.js": "//", "Game.exe": b"MZ"})[0] == "rpgmaker-mvmz"
 
 
+def test_isaac(tmp_path):
+    key, det = engine_of(tmp_path, {
+        "isaac-ng.exe": b"MZ", "resources/packed/graphics.a": b"", "resources/scripts/enums.lua": "--",
+        "resources-dlc3/packed/graphics.a": b"", "mods/mymod_123/main.lua": "--", "mods/mymod_123/metadata.xml": "<metadata/>",
+    })
+    assert key == "isaac" and det["dlc"] == "Repentance or later" and det["mods"] == 1 and det["extracted"] is False
+
+
 def test_managed_pe(tmp_path):
     # minimal PE32 with a CLR header directory entry
     pe = bytearray(1024)
@@ -113,6 +121,17 @@ def test_sheet_slice_roundtrip():
     sh = sprite.sheet(frames, cols=3)
     assert sh.size == (24, 16)
     assert len(sprite.slice_sheet(sh, 8, 8)) == 5
+
+
+def test_anm2_roundtrip(tmp_path):
+    xml = sprite.anm2("fam.png", (128, 64), 32, 32, [("Idle", [0, 1, 2, 3], True), ("Shoot", [4, 5, 6, 7], False)],
+                      delay=3, events=[("Shoot", "Shoot", 2)])
+    (tmp_path / "fam.anm2").write_text(xml)
+    info = sprite.anm2_info(tmp_path / "fam.anm2")
+    assert info["default"] == "Idle" and info["layers"] == {"body": "fam.png"}
+    assert [(a["name"], a["frames"], a["loop"]) for a in info["animations"]] == [("Idle", 12, True), ("Shoot", 12, False)]
+    assert info["animations"][1]["events"] == ["Shoot@2"]
+    assert 'XCrop="32" YCrop="32"' in xml       # frame 5 is row 1, column 1
 
 
 def test_team_mask():
