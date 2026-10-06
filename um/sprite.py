@@ -13,6 +13,9 @@
     um sprite seamless in.png out.png                   # make a texture tile (offset + cross-blend)
     um sprite tile-preview in.png out.png               # 3x3 tiling preview to check seams
     um sprite preview in.png out.png --scale 4          # checkerboard + scale, for looking at it
+    um sprite anm2 out.anm2 sheet.png --frame 32x32 --anim Idle=0-3 --anim Shoot=4-7:once --event Shoot@Shoot:2
+                                                        # Binding of Isaac animation file from a sheet
+    um sprite anm2-info file.anm2                       # spritesheets, layers, animations, frame counts, events
 
 Rules of thumb (learned the hard way): generate on a flat background or with real transparency, cut
 out with a border flood fill (keeps interior whites like eyes), trim, then scale ONCE with nearest
@@ -21,6 +24,7 @@ neighbour to the engine's frame size. Keep facing directions consistent with the
 """
 from __future__ import annotations
 
+import json
 from collections import deque
 from pathlib import Path
 
@@ -304,6 +308,84 @@ def info(im) -> dict:
 # --------------------------------------------------------------------------- CLI
 
 
+# --------------------------------------------------------------------------- ANM2 (Binding of Isaac)
+
+_ANM2_TINT = dict(XScale="100", YScale="100", RedTint="255", GreenTint="255", BlueTint="255", AlphaTint="255",
+                  RedOffset="0", GreenOffset="0", BlueOffset="0", Rotation="0", Interpolated="false")
+
+
+def anm2(sheet_path: str, sheet_size: tuple[int, int], fw: int, fh: int, anims: list[tuple[str, list[int], bool]],
+         delay: int = 4, pivot: tuple[int, int] | None = None, layer: str = "body", fps: int = 30,
+         events: list[tuple[str, str, int]] = ()) -> str:
+    """An .anm2 with one spritesheet layer. Frames are numbered row-major across the sheet.
+
+    anims: [(name, [frame indices], loop)]. events: [(event, animation, at_frame)]. Delay is in game frames
+    (the game animates at 30 fps), the pivot is inside the frame (default bottom centre = the entity's feet).
+    """
+    import xml.etree.ElementTree as ET
+    cols = max(1, sheet_size[0] // fw)
+    px, py = pivot or (fw // 2, fh)
+    root = ET.Element("AnimatedActor")
+    ET.SubElement(root, "Info", CreatedBy="universal-modder", CreatedOn="", Version="1", Fps=str(fps))
+    content = ET.SubElement(root, "Content")
+    ET.SubElement(ET.SubElement(content, "Spritesheets"), "Spritesheet", Path=sheet_path, Id="0")
+    ET.SubElement(ET.SubElement(content, "Layers"), "Layer", Name=layer, Id="0", SpritesheetId="0")
+    ET.SubElement(content, "Nulls")
+    ev_ids = {e: i for i, e in enumerate(dict.fromkeys(e for e, _, _ in events))}
+    evs = ET.SubElement(content, "Events")
+    for e, i in ev_ids.items():
+        ET.SubElement(evs, "Event", Id=str(i), Name=e)
+    names = [a[0] for a in anims]
+    for _, anim, _ in events:
+        if anim not in names:
+            die(f"event on unknown animation {anim!r} (have {', '.join(names)})")
+    animations = ET.SubElement(root, "Animations", DefaultAnimation=names[0] if names else "")
+    for name, frames, loop in anims:
+        total = len(frames) * delay
+        a = ET.SubElement(animations, "Animation", Name=name, FrameNum=str(total), Loop=str(loop).lower())
+        ET.SubElement(ET.SubElement(a, "RootAnimation"), "Frame", XPosition="0", YPosition="0", Delay=str(total),
+                      Visible="true", **_ANM2_TINT)
+        la = ET.SubElement(ET.SubElement(a, "LayerAnimations"), "LayerAnimation", LayerId="0", Visible="true")
+        for i in frames:
+            ET.SubElement(la, "Frame", XPosition="0", YPosition="0", XPivot=str(px), YPivot=str(py),
+                          XCrop=str(i % cols * fw), YCrop=str(i // cols * fh), Width=str(fw), Height=str(fh),
+                          Delay=str(delay), Visible="true", **_ANM2_TINT)
+        ET.SubElement(a, "NullAnimations")
+        trig = ET.SubElement(a, "Triggers")
+        for e, anim, at in events:
+            if anim == name:
+                ET.SubElement(trig, "Trigger", EventId=str(ev_ids[e]), AtFrame=str(at))
+    ET.indent(root, "  ")
+    return ET.tostring(root, encoding="unicode") + "\n"
+
+
+def anm2_info(path) -> dict:
+    """What an .anm2 holds: the animation names a mod must provide when it replaces or reuses one."""
+    import xml.etree.ElementTree as ET
+    root = ET.parse(path).getroot()
+    sheets = {s.get("Id"): s.get("Path") for s in root.iter("Spritesheet")}
+    events = {e.get("Id"): e.get("Name") for e in root.iter("Event")}
+    anims = root.find("Animations")
+    return dict(
+        fps=int((root.find("Info").get("Fps") if root.find("Info") is not None else None) or 30),
+        spritesheets=sheets,
+        layers={l.get("Name"): sheets.get(l.get("SpritesheetId")) for l in root.iter("Layer")},
+        nulls=[n.get("Name") for n in root.iter("Null")],
+        default=anims.get("DefaultAnimation") if anims is not None else None,
+        animations=[dict(name=a.get("Name"), frames=int(a.get("FrameNum") or 0), loop=a.get("Loop") == "true",
+                         events=[f"{events.get(t.get('EventId'))}@{t.get('AtFrame')}" for t in a.iter("Trigger")])
+                    for a in (anims if anims is not None else [])],
+    )
+
+
+def _frame_list(spec: str) -> list[int]:
+    out = []
+    for part in spec.split(","):
+        a, _, b = part.partition("-")
+        out += list(range(int(a), int(b) + 1)) if b else [int(a)]
+    return out
+
+
 def _color(s: str | None):
     if not s:
         return None
@@ -329,6 +411,32 @@ def main(a):
         for i, f in enumerate(slice_sheet(load(a.input), fw, fh, a.pad)):
             f.save(out / f"frame_{i:03d}.png")
         print(out)
+        return
+    if c == "anm2":
+        import os
+        fw, fh = parse_size(a.frame)
+        im = load(a.sheet)
+        n = (im.width // fw) * (im.height // fh)
+        anims = []
+        for spec in a.anim or [f"Idle=0-{n - 1}"]:
+            name, _, rest = spec.partition("=")
+            frames, _, mode = rest.partition(":")
+            idx = _frame_list(frames)
+            if not name or not idx or max(idx) >= n:
+                die(f"bad --anim {spec!r}: want Name=0-3[,5][:once]; the sheet has frames 0-{n - 1}")
+            anims.append((name, idx, mode != "once"))
+        events = []
+        for spec in a.event or []:
+            ev, _, rest = spec.partition("@")
+            anim, _, at = rest.partition(":")
+            events.append((ev, anim, int(at or 0)))
+        rel = a.path or os.path.relpath(Path(a.sheet).resolve(), Path(a.output).resolve().parent).replace("\\", "/")
+        Path(a.output).write_text(anm2(rel, im.size, fw, fh, anims, a.delay, parse_size(a.pivot) if a.pivot else None,
+                                       a.layer, events=events))
+        print(a.output, [(nm, len(f)) for nm, f, _ in anims])
+        return
+    if c == "anm2-info":
+        print(json.dumps(anm2_info(a.input), indent=2))
         return
     if c == "frames":
         out = Path(a.outdir)
@@ -428,6 +536,20 @@ def register(sub):
     q.add_argument("outdir")
     q.add_argument("--n", type=int, default=3)
     q.add_argument("--kind", default="bob", choices=["bob", "squash", "wobble", "flash"])
+    q.set_defaults(func=main)
+    q = cs.add_parser("anm2", help="Binding of Isaac .anm2 animation from a sprite sheet")
+    q.add_argument("output", help="out.anm2")
+    q.add_argument("sheet", help="the sprite sheet PNG (frames row-major)")
+    q.add_argument("--frame", required=True, help="WxH of one frame")
+    q.add_argument("--anim", action="append", help="Name=0-3[,5,7][:once], repeatable (default: Idle = every frame, looping)")
+    q.add_argument("--event", action="append", help="Event@Animation:frame, e.g. Shoot@Attack:2 (Sprite:IsEventTriggered)")
+    q.add_argument("--delay", type=int, default=4, help="game frames per sheet frame (30 fps)")
+    q.add_argument("--pivot", help="XxY inside the frame (default: bottom centre)")
+    q.add_argument("--layer", default="body")
+    q.add_argument("--path", help="Spritesheet Path written in the file (default: sheet relative to the .anm2)")
+    q.set_defaults(func=main)
+    q = cs.add_parser("anm2-info", help="list an .anm2's spritesheets, layers, animations and events")
+    q.add_argument("input")
     q.set_defaults(func=main)
     q = cmd("team-mask", "player-colour mask from a saturated accent colour")
     q.add_argument("--hue", default="blue", choices=["blue", "red", "green", "magenta"])

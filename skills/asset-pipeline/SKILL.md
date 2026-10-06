@@ -33,6 +33,7 @@ um sprite palette px.png px2.png --from stock_sprite.png  # snap to the game's o
 um sprite frames npc.png frames/ --n 3 --kind bob          # cheap idle animation (bob/squash/wobble/flash)
 um sprite sheet sheet.png frames/*.png --vertical         # Terraria-style strip (or --cols N grid)
 um sprite slice sheet.png out/ --frame 32x32              # the other direction
+um sprite anm2 fam.anm2 sheet.png --frame 32x32 --anim Idle=0-3 --anim Shoot=4-7:once   # Isaac .anm2
 um sprite team-mask unit.png unit_grey.png --hue blue     # player-colour mask (+ desaturated sprite)
 um sprite preview item.png look.png --scale 6             # checkerboard + zoom: LOOK at it before shipping
 ```
